@@ -1,49 +1,50 @@
-// Core
-import { useState } from 'react';
+import { useState, SyntheticEvent } from 'react';
 
-export const useAutocomplete = <T>(
-  data: Array<T>,
-  property?: Partial<T>,
-) => {
-  // Declaring state
-  const [query, setQuery] = useState('');
+function containsQuery(value: string, query: string): boolean {
+  return value
+    .toLowerCase()
+    .includes(query.toLowerCase());
+}
+
+const getKeyValue = <T, K extends keyof T>(obj: T, key: K): T[K] => obj[key];
+
+interface Autocomplete<T> {
+  results: Array<T>,
+  search: (query: string) => void;
+  handleSearch: (e: SyntheticEvent) => void;
+}
+
+export const useAutocomplete = <T = string>(data: Array<T>, property?: (keyof T)[])
+  : Autocomplete<T> => {
   const [results, setResults] = useState<T[]>([]);
 
-  // Creating type
-  // for overloading function
-  // it will allow as to accept
-  // both simple string arrays
-  // and sort by specific properties
-
-  type Overloaded = {
-    (element: string): boolean;
-    (element: T): boolean;
-  };
-
-  // Simple helper function
-  const getValue = (value: string, target: string) => value
-    .toLowerCase()
-    .includes(target.toLowerCase());
-
-  // Getting keys
-  const getObjectKeys = (
-    criteria: Partial<T>,
-  ) => Object.keys(criteria) as (keyof T)[];
-
-  const findResults: Overloaded = (element: any) => {
-    if (property) {
-      const propertyValue = getObjectKeys(property);
-      return propertyValue.every((value) => getValue(element[value], query));
+  function filterResults(item: T, query: string): boolean {
+    if (typeof item === 'string') {
+      return containsQuery(item, query);
     }
-    return getValue(element, query);
-  };
+    if (typeof item === 'object' && property) {
+      if (property.length < 1) {
+        throw new Error('Array with search params cant be empty!');
+      }
+      return property.some((prop) => {
+        const value = item[prop as keyof T];
+        return typeof value === 'string' && containsQuery(value, query);
+      });
+    }
+    return false;
+  }
 
-  const handleSearch = (e: React.SyntheticEvent) => {
-    const target = e.target as HTMLInputElement;
-    setQuery(target.value);
-    const searchResults = data.filter(findResults);
+  const search = (query: string): void => {
+    const searchResults = data.filter((item) => filterResults(item, query));
     setResults(searchResults);
   };
 
-  return { handleSearch, results, query };
+  const handleSearch = (e: SyntheticEvent): void => {
+    const input = e.target as HTMLInputElement;
+    search(input.value);
+  };
+
+  return {
+    handleSearch, results, search,
+  };
 };
